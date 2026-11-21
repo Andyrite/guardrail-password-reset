@@ -1,0 +1,158 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Municipal Guardrail - Reset Password</title>
+  <style>
+    body {
+      background: #101d35;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 30px 15px;
+    }
+    .panel {
+      max-width: 440px;
+      margin: 70px auto;
+      padding: 25px;
+      background: #203b62;
+      border-radius: 12px;
+    }
+    input, button {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border: none;
+      font-size: 16px;
+    }
+    button {
+      background: #63a5ff;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #status { line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h2>Municipal Guardrail</h2>
+    <h3>Reset Your Password</h3>
+    <p id="status">Checking password-reset link...</p>
+
+    <form id="form" hidden>
+      <input id="password" type="password"
+        placeholder="New password"
+        autocomplete="new-password"
+        minlength="8" required>
+      <input id="confirm" type="password"
+        placeholder="Confirm new password"
+        autocomplete="new-password"
+        minlength="8" required>
+      <button type="submit">Save New Password</button>
+    </form>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const SUPABASE_URL =
+      "https://gktrcqayibwkoevqywzf.supabase.co";
+
+    const SUPABASE_KEY = sb_publishable_b5zgUYBktdgoY8IudeOXNA_ohYyLFsz
+
+    const statusBox = document.getElementById("status");
+    const form = document.getElementById("form");
+
+    async function start() {
+      try {
+        if (SUPABASE_KEY.includes("PASTE_YOUR")) {
+          throw new Error("Publishable key has not been entered.");
+        }
+
+        const client = window.supabase.createClient(
+          SUPABASE_URL,
+          SUPABASE_KEY,
+          {
+            auth: {
+              detectSessionInUrl: true,
+              persistSession: false
+            }
+          }
+        );
+
+        const params = new URLSearchParams(location.search);
+        const hash = new URLSearchParams(location.hash.slice(1));
+
+        if (params.get("error") || hash.get("error")) {
+          throw new Error(
+            params.get("error_description") ||
+            hash.get("error_description") ||
+            "This recovery link has expired."
+          );
+        }
+
+        const code = params.get("code");
+        if (code) {
+          const result = await client.auth.exchangeCodeForSession(code);
+          if (result.error) throw result.error;
+        }
+
+        const tokenHash = params.get("token_hash");
+        if (tokenHash && params.get("type") === "recovery") {
+          const result = await client.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: "recovery"
+          });
+          if (result.error) throw result.error;
+        }
+
+        const sessionResult = await client.auth.getSession();
+        if (sessionResult.error) throw sessionResult.error;
+
+        if (!sessionResult.data.session) {
+          throw new Error(
+            "No valid recovery session. Request a new password-reset email."
+          );
+        }
+
+        statusBox.textContent = "Enter your new password below.";
+        form.hidden = false;
+
+        form.addEventListener("submit", async function(event) {
+          event.preventDefault();
+
+          const password = document.getElementById("password").value;
+          const confirm = document.getElementById("confirm").value;
+
+          if (password !== confirm) {
+            statusBox.textContent = "Passwords do not match.";
+            return;
+          }
+
+          statusBox.textContent = "Saving new password...";
+
+          const result = await client.auth.updateUser({
+            password: password
+          });
+
+          if (result.error) {
+            statusBox.textContent = result.error.message;
+          } else {
+            statusBox.textContent =
+              "Password updated successfully! You can now sign in to the guardrail app.";
+            form.hidden = true;
+            await client.auth.signOut();
+          }
+        });
+
+      } catch (error) {
+        statusBox.textContent = error.message;
+      }
+    }
+
+    start();
+  </script>
+</body>
+</html>
